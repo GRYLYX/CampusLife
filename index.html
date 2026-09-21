@@ -7,6 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --bg:#070A10;
@@ -115,7 +118,7 @@ a{color:var(--indigo)}
 .tag{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:3px 10px;border-radius:99px;background:#161D2B;border:1px solid var(--line2);color:var(--dim)}
 .dot{width:8px;height:8px;border-radius:99px;flex:0 0 8px;display:inline-block}
 
-input[type=text],input[type=number],input[type=date],input[type=time],input[type=search],select,textarea{
+input[type=text],input[type=number],input[type=date],input[type=time],input[type=search],input[type=email],input[type=password],select,textarea{
   width:100%;padding:10px 13px;border:1px solid var(--line2);border-radius:11px;background:#0C111A;color:var(--text);
 }
 input::placeholder,textarea::placeholder{color:var(--dim2)}
@@ -238,10 +241,44 @@ tr:last-child td{border-bottom:0}
   .chip{padding:2px}
 }
 @media (max-width:560px){ .g3,.g2{grid-template-columns:minmax(0,1fr)} }
+
+/* ---------- auth gate ---------- */
+#authGate{position:fixed;inset:0;background:var(--bg);z-index:400;display:none;align-items:center;justify-content:center;padding:20px}
+#authGate .box{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line2);border-radius:20px;padding:32px 28px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+#authGate h1{font-size:26px;margin-bottom:4px}
+#authGate h1 span{color:var(--indigo)}
+#authGate p.sub{color:var(--dim2);font-size:13.5px;margin-bottom:24px}
+.authtabs{display:flex;gap:6px;background:var(--card2);border:1px solid var(--line2);border-radius:12px;padding:4px;margin-bottom:20px}
+.authtabs button{flex:1;background:none;border:0;padding:8px 0;border-radius:9px;cursor:pointer;color:var(--dim);font-weight:600;font-size:13.5px}
+.authtabs button[aria-selected="true"]{background:#1B2140;color:#fff}
+#authErr{color:var(--rose);font-size:13px;margin:-4px 0 14px;min-height:1px}
+#authGate .field{margin-bottom:14px}
+#authGate .btn.primary{width:100%;padding:11px 0;font-size:15px}
+#authGate .foot{margin-top:16px;text-align:center;font-size:13px;color:var(--dim2)}
+#authGate .foot a{color:var(--indigo);cursor:pointer;text-decoration:none}
+#authGate .foot a:hover{text-decoration:underline}
+#authGate .skip{margin-top:18px;text-align:center}
+#authGate .skip button{background:none;border:0;color:var(--dim2);font-size:12.5px;cursor:pointer;text-decoration:underline}
 </style>
 </head>
 <body>
-<div class="app">
+<div id="authGate">
+  <div class="box">
+    <h1>Campus<span>Life</span></h1>
+    <p class="sub">Sign in to sync your dashboard everywhere.</p>
+    <div class="authtabs" role="tablist">
+      <button role="tab" aria-selected="true" data-atab="in">Sign in</button>
+      <button role="tab" aria-selected="false" data-atab="up">Create account</button>
+    </div>
+    <div id="authErr"></div>
+    <div class="field"><label class="f" for="authEmail">Email</label><input type="email" id="authEmail" autocomplete="email"></div>
+    <div class="field"><label class="f" for="authPass">Password</label><input type="password" id="authPass" autocomplete="current-password"></div>
+    <button class="btn primary" id="authGo">Sign in</button>
+    <div class="foot"><a id="authForgot">Forgot your password?</a></div>
+    <div class="skip"><button id="authSkip">Not now — use this browser only</button></div>
+  </div>
+</div>
+<div class="app" style="display:none">
   <aside class="side">
     <div class="brandbox">
       <h1>Campus<span>Life</span></h1>
@@ -249,7 +286,11 @@ tr:last-child td{border-bottom:0}
     </div>
     <div class="navwrap"><nav class="nav" id="nav"></nav></div>
     <div class="sidefoot"><span id="termLabel"></span>
-      <button class="icon" id="settingsBtn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2.2M12 19.2v2.2M21.4 12h-2.2M4.8 12H2.6M18.6 5.4 17 7M7 17l-1.6 1.6M18.6 18.6 17 17M7 7 5.4 5.4"/></svg></button>
+      <span class="row" style="gap:6px">
+        <span id="acctEmail" class="dim" style="font-size:11.5px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title=""></span>
+        <button class="icon" id="signOutBtn" title="Sign out" aria-label="Sign out" hidden><svg viewBox="0 0 24 24"><path d="M15 17l5-5-5-5M20 12H9M13 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7"/></svg></button>
+        <button class="icon" id="settingsBtn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2.2M12 19.2v2.2M21.4 12h-2.2M4.8 12H2.6M18.6 5.4 17 7M7 17l-1.6 1.6M18.6 18.6 17 17M7 7 5.4 5.4"/></svg></button>
+      </span>
     </div>
   </aside>
   <main class="main">
@@ -289,6 +330,21 @@ const KINDS={
 const FREQ=[{value:"none",label:"Does not repeat"},{value:"daily",label:"Every day"},{value:"weekly",label:"Every week"},{value:"monthly",label:"Every month"},{value:"yearly",label:"Every year"}];
 const uid=()=>Math.random().toString(36).slice(2,10);
 
+/* ======================= Firebase (optional login + sync) =======================
+   Paste your own project's config below, from Firebase console → Project settings →
+   your web app → SDK setup and configuration. Leaving this as-is skips login
+   entirely and CampusLife just saves to this browser, same as before. */
+const firebaseConfig = {
+  apiKey: "AIzaSyC5BCe7mdHxALjTNwHnnsfSgxGHxh_Lu4k",
+  authDomain: "campuslife-222b4.firebaseapp.com",
+  projectId: "campuslife-222b4",
+  storageBucket: "campuslife-222b4.firebasestorage.app",
+  messagingSenderId: "497187038788",
+  appId: "1:497187038788:web:4a834f5311d32b3145be11"
+};
+const FIREBASE_READY = !!(firebaseConfig.apiKey && !/^YOUR_/.test(firebaseConfig.apiKey));
+let currentUser=null, userDocRef=null, authMode="in";
+
 const blank=()=>({
   v:2,updated:0,
   settings:{name:"",course:"",uni:"",currency:"£",termStart:"",termWeeks:12,termLabel:"Term 1 · 2026/27",monthlyIncome:0,savingsLabel:"",savingsTarget:0,savingsNow:0,shopBudget:35},
@@ -312,9 +368,21 @@ function loadLocal(){ try{ const r=localStorage.getItem(KEY); if(r) S=Object.ass
 function save(){
   S.updated=Date.now();
   try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){}
-  clearTimeout(saveTimer); saveTimer=setTimeout(pushDb,900);
+  clearTimeout(saveTimer); saveTimer=setTimeout(pushRemote,900);
 }
-async function pushDb(){ if(!dbDoc) return; try{ await dbDoc.set({payload:JSON.stringify(S),updated:S.updated}); }catch(e){} }
+async function pushRemote(){
+  if(userDocRef){
+    try{ await userDocRef.set({payload:JSON.stringify(S),updated:S.updated}); setSyncStatus("Synced"); }
+    catch(e){ setSyncStatus("Saved on this device"); }
+    return;
+  }
+  if(!dbDoc) return;
+  try{ await dbDoc.set({payload:JSON.stringify(S),updated:S.updated}); }catch(e){}
+}
+function setSyncStatus(t){
+  const el=document.getElementById("acctEmail");
+  if(el && currentUser) el.title = t + " · " + (currentUser.email||"");
+}
 async function connect(){
   if(!(window.claude&&typeof window.claude.use==="function")) return;
   try{
@@ -327,9 +395,98 @@ async function connect(){
         S=Object.assign(blank(),JSON.parse(d.payload));
         try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){}
         render();
-      } else if(S.updated) pushDb();
-    } else if(S.updated) pushDb();
+      } else if(S.updated) pushRemote();
+    } else if(S.updated) pushRemote();
   }catch(e){}
+}
+
+/* ---- Firebase auth ---- */
+function initFirebase(){
+  try{ firebase.initializeApp(firebaseConfig); }
+  catch(e){ authError("Couldn't reach Firebase — double check the config values."); bootLocalOnly(); return; }
+  firebase.auth().onAuthStateChanged(async user=>{
+    if(user){
+      currentUser=user; userDocRef=firebase.firestore().collection("users").doc(user.uid);
+      const email=document.getElementById("acctEmail"), so=document.getElementById("signOutBtn");
+      if(email){ email.textContent=user.email||""; email.title=user.email||""; }
+      if(so) so.hidden=false;
+      try{
+        const snap=await userDocRef.get();
+        if(snap.exists){
+          const d=snap.data();
+          if(d && d.payload && (d.updated||0) >= (S.updated||0)){
+            S=Object.assign(blank(),JSON.parse(d.payload));
+            try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){}
+          } else if(S.updated){ pushRemote(); }
+        } else if(S.updated){ pushRemote(); }
+      }catch(e){}
+      document.getElementById("authGate").style.display="none";
+      document.querySelector(".app").style.display="flex";
+      bootApp();
+    } else {
+      currentUser=null; userDocRef=null;
+      document.getElementById("authGate").style.display="flex";
+      document.querySelector(".app").style.display="none";
+    }
+  });
+}
+function authError(msg){ document.getElementById("authErr").textContent=msg||""; }
+function friendlyAuthError(code){
+  return ({
+    "auth/invalid-email":"That doesn't look like a valid email.",
+    "auth/user-not-found":"No account with that email — try Create account instead.",
+    "auth/wrong-password":"Wrong password.",
+    "auth/invalid-credential":"Email or password is wrong.",
+    "auth/email-already-in-use":"An account already exists with that email — try Sign in instead.",
+    "auth/weak-password":"Use at least 6 characters.",
+    "auth/too-many-requests":"Too many attempts — wait a moment and try again."
+  })[code] || "Something went wrong. Try again.";
+}
+function wireAuthGate(){
+  const tabs=document.querySelectorAll("[data-atab]");
+  tabs.forEach(b=>b.onclick=()=>{
+    authMode=b.dataset.atab;
+    tabs.forEach(x=>x.setAttribute("aria-selected",String(x===b)));
+    document.getElementById("authGo").textContent = authMode==="in" ? "Sign in" : "Create account";
+    document.getElementById("authPass").autocomplete = authMode==="in" ? "current-password" : "new-password";
+    authError("");
+  });
+  document.getElementById("authGo").onclick=async()=>{
+    authError("");
+    const email=document.getElementById("authEmail").value.trim();
+    const pass=document.getElementById("authPass").value;
+    if(!email||!pass){ authError("Fill in both fields."); return; }
+    try{
+      if(authMode==="in") await firebase.auth().signInWithEmailAndPassword(email,pass);
+      else await firebase.auth().createUserWithEmailAndPassword(email,pass);
+    }catch(e){ authError(friendlyAuthError(e.code)); }
+  };
+  document.getElementById("authPass").onkeydown=e=>{ if(e.key==="Enter") document.getElementById("authGo").click(); };
+  document.getElementById("authForgot").onclick=async()=>{
+    const email=document.getElementById("authEmail").value.trim();
+    if(!email){ authError("Type your email above first, then tap this again."); return; }
+    try{ await firebase.auth().sendPasswordResetEmail(email); authError(""); toast("Password reset email sent"); }
+    catch(e){ authError(friendlyAuthError(e.code)); }
+  };
+  document.getElementById("authSkip").onclick=()=>{
+    document.getElementById("authGate").style.display="none";
+    document.querySelector(".app").style.display="flex";
+    bootApp();
+  };
+  const so=document.getElementById("signOutBtn");
+  if(so) so.onclick=()=>confirmDo("This signs you out on this device. Your data stays saved to your account.",()=>{ firebase.auth().signOut(); });
+}
+function bootLocalOnly(){
+  document.getElementById("authGate").style.display="none";
+  document.querySelector(".app").style.display="flex";
+  bootApp();
+}
+let appBooted=false;
+function bootApp(){
+  if(appBooted) return; appBooted=true;
+  buildNav(); selDate=todayISO(); planDate=todayISO(); weekCursor=mondayOf(new Date());
+  go("overview");
+  if(!FIREBASE_READY) connect();
 }
 
 /* ======================= dates ======================= */
@@ -1476,10 +1633,13 @@ function render(){
 
 /* ======================= boot ======================= */
 loadLocal();
-buildNav();
-selDate=todayISO(); planDate=todayISO(); weekCursor=mondayOf(new Date());
-go("overview");
-connect();
+wireAuthGate();
+if(FIREBASE_READY){
+  document.getElementById("authGate").style.display="flex";
+  initFirebase();
+} else {
+  bootLocalOnly();
+}
 </script>
 </body>
 </html>
